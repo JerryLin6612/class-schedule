@@ -98,8 +98,10 @@ const App = () => {
   const [passwordInput, setPasswordInput] = useState('');
 
   // --- 新增這段關鍵定義 ---
-  const monthlyTotalHours = useMemo(() => {
-    if (viewMode !== 'individual' || !selectedEmployee) return 0;
+ const monthlyTotalHours = useMemo(() => {
+    if (viewMode !== 'individual' || !selectedEmployee) {
+      return 0;
+    }
     const yr = currentDate.getFullYear();
     const mo = currentDate.getMonth();
     const daysCount = getDaysInMonth(yr, mo);
