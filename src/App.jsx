@@ -86,7 +86,6 @@ const App = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
 
-  // 💡 確保只有這裡有一段 monthlyTotalHours
   const monthlyTotalHours = useMemo(() => {
     if (viewMode !== 'individual' || !selectedEmployee) return 0;
     const yr = currentDate.getFullYear();
