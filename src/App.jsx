@@ -97,6 +97,23 @@ const App = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
 
+  // --- 新增這段關鍵定義 ---
+  const monthlyTotalHours = useMemo(() => {
+    if (viewMode !== 'individual' || !selectedEmployee) return 0;
+    const yr = currentDate.getFullYear();
+    const mo = currentDate.getMonth();
+    const daysCount = getDaysInMonth(yr, mo);
+    let total = 0;
+    for (let d = 1; d <= daysCount; d++) {
+      const shift = shifts[`${selectedEmployee}_${yr}-${mo + 1}-${d}`];
+      if (shift?.code && SHIFT_TYPES[shift.code]) {
+        total += SHIFT_TYPES[shift.code].hours;
+      }
+    }
+    return total;
+  }, [viewMode, selectedEmployee, shifts, currentDate]);
+  // -----------------------
+
   const years = useMemo(() => {
     const cy = new Date().getFullYear();
     return Array.from({ length: 5 }, (_, i) => cy - 2 + i);
