@@ -104,6 +104,24 @@ const App = () => {
 
   const months = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
 
+  // ==========================================
+  // 💡 新增：計算個人總時數，解決白屏問題
+  // ==========================================
+  const monthlyTotalHours = useMemo(() => {
+    if (viewMode !== 'individual' || !selectedEmployee) return 0;
+    const yr = currentDate.getFullYear();
+    const mo = currentDate.getMonth();
+    const daysCount = getDaysInMonth(yr, mo);
+    let total = 0;
+    for (let d = 1; d <= daysCount; d++) {
+      const shift = shifts[`${selectedEmployee}_${yr}-${mo + 1}-${d}`];
+      if (shift?.code && SHIFT_TYPES[shift.code]) {
+        total += SHIFT_TYPES[shift.code].hours;
+      }
+    }
+    return total;
+  }, [viewMode, selectedEmployee, shifts, currentDate]);
+
   const showToast = useCallback((txt) => {
     setMessage(txt);
     setTimeout(() => setMessage(null), 3000);
@@ -439,7 +457,11 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans p-4 md:p-10 selection:bg-indigo-100">
-      {message && <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[400] bg-white border px-8 py-4 rounded-full shadow-2xl animate-in fade-in slide-in-from-top-4 flex items-center gap-3"><div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div><span className="font-bold text-sm">{message}</span></div>}
+      
+      {/* 提示訊息 */}
+      {message && <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[400] bg-white border px-8 py-4 rounded-full shadow-2xl flex items-center gap-3"><div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div><span className="font-bold text-sm">{message}</span></div>}
+      
+      {/* 確認對話框 */}
       {confirmDialog && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className={`bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-8 text-left animate-in zoom-in-95 ${confirmDialog.isWarning ? 'border-2 border-rose-400' : 'border border-white'}`}>
@@ -452,6 +474,8 @@ const App = () => {
           </div>
         </div>
       )}
+      
+      {/* 解鎖編輯模式視窗 */}
       {showAuthModal && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-[2rem] shadow-2xl max-w-sm w-full p-8 text-center animate-in zoom-in-95 border border-white">
@@ -466,6 +490,52 @@ const App = () => {
           </div>
         </div>
       )}
+
+      // ==========================================
+      // 💡 新增：排班輸入彈出視窗
+      // ==========================================
+      {editState && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[2rem] shadow-2xl max-w-lg w-full p-6 text-left relative">
+            <button onClick={() => setEditState(null)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600"><X className="w-6 h-6" /></button>
+            <h3 className="text-xl font-black text-slate-800 mb-6">設定班別 - {editState.day}日</h3>
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              {Object.entries(SHIFT_TYPES).map(([code, info]) => (
+                <button key={code} onClick={() => handleSaveShift(editState.day, editState.empId, code)} className={`p-3 rounded-2xl border font-bold text-sm transition-all hover:scale-105 active:scale-95 flex flex-col items-center justify-center ${info.color}`}>
+                  <div className="text-lg mb-1">{code}</div>
+                  <div className="text-[10px] opacity-80">{info.label}</div>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => handleDeleteShift(editState.day, editState.empId)} className="w-full py-3 rounded-xl border border-rose-100 text-rose-500 font-bold flex items-center justify-center gap-2 hover:bg-rose-50 transition-all"><Trash2 className="w-4 h-4"/> 清除此班表</button>
+          </div>
+        </div>
+      )}
+
+      // ==========================================
+      // 💡 新增：員工管理彈出視窗
+      // ==========================================
+      {isEmpManageOpen && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-8 relative">
+            <button onClick={() => setIsEmpManageOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600"><X className="w-6 h-6" /></button>
+            <h3 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-2"><Users className="w-6 h-6"/> 管理團隊</h3>
+            <div className="flex gap-2 mb-6">
+              <input type="text" value={newEmpName} onChange={e => setNewEmpName(e.target.value)} placeholder="輸入新員工姓名" className="flex-1 bg-slate-50 border border-slate-100 rounded-xl p-3 font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-100" onKeyDown={e => e.key === 'Enter' && handleAddEmployee()} />
+              <button onClick={handleAddEmployee} className="px-4 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 transition-all">新增</button>
+            </div>
+            <div className="max-h-[50vh] overflow-y-auto space-y-2 pr-2">
+              {employees.map(emp => (
+                <div key={emp.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="font-bold text-slate-700">{emp.name}</span>
+                  <button onClick={() => handleDeleteEmployee(emp.id, emp.name)} className="p-2 text-rose-400 hover:bg-rose-50 rounded-lg transition-all"><Trash2 className="w-4 h-4"/></button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="max-w-7xl mx-auto mb-12 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
         <div className="flex items-center gap-6">
           <div className="relative p-5 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-[2.5rem] shadow-xl text-white"><CalendarIcon className="w-8 h-8" /></div>
