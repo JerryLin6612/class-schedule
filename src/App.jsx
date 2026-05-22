@@ -93,12 +93,11 @@ const App = () => {
   const [cleanupWarning, setCleanupWarning] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
-  
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
 
-  // --- 新增這段關鍵定義 ---
- const monthlyTotalHours = useMemo(() => {
+  // 💡 已清理乾淨的個人總時數計算
+  const monthlyTotalHours = useMemo(() => {
     if (viewMode !== 'individual' || !selectedEmployee) {
       return 0;
     }
@@ -114,7 +113,6 @@ const App = () => {
     }
     return total;
   }, [viewMode, selectedEmployee, shifts, currentDate]);
-  // -----------------------
 
   const years = useMemo(() => {
     const cy = new Date().getFullYear();
@@ -122,28 +120,6 @@ const App = () => {
   }, []);
 
   const months = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
-
-  // ==========================================
-  // 💡 新增：計算個人總時數，解決白屏問題
-  // ==========================================
-  const monthlyTotalHours = useMemo(() => {
-    // 確保這裡是用 {} 把邏輯包起來
-    if (viewMode !== 'individual' || !selectedEmployee) {
-      return 0;
-    }
-    
-    const yr = currentDate.getFullYear();
-    const mo = currentDate.getMonth();
-    const daysCount = getDaysInMonth(yr, mo);
-    let total = 0;
-    for (let d = 1; d <= daysCount; d++) {
-      const shift = shifts[`${selectedEmployee}_${yr}-${mo + 1}-${d}`];
-      if (shift?.code && SHIFT_TYPES[shift.code]) {
-        total += SHIFT_TYPES[shift.code].hours;
-      }
-    }
-    return total;
-  }, [viewMode, selectedEmployee, shifts, currentDate]);
 
   const showToast = useCallback((txt) => {
     setMessage(txt);
@@ -514,9 +490,7 @@ const App = () => {
         </div>
       )}
 
-      // ==========================================
-      // 💡 新增：排班輸入彈出視窗
-      // ==========================================
+      {/* 排班輸入彈出視窗 */}
       {editState && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-[2rem] shadow-2xl max-w-lg w-full p-6 text-left relative">
@@ -535,9 +509,7 @@ const App = () => {
         </div>
       )}
 
-      // ==========================================
-      // 💡 新增：員工管理彈出視窗
-      // ==========================================
+      {/* 員工管理彈出視窗 */}
       {isEmpManageOpen && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-8 relative">
