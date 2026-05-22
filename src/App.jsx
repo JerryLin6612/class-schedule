@@ -13,7 +13,6 @@ import {
   onSnapshot, 
   addDoc, 
   deleteDoc, 
-  updateDoc, 
   writeBatch
 } from 'firebase/firestore';
 import { 
@@ -22,15 +21,12 @@ import {
   Edit3, 
   Plus, 
   Trash2, 
-  CheckCircle2, 
   Users, 
   LayoutGrid, 
   UserPlus, 
   X, 
   AlertTriangle, 
   RefreshCw, 
-  GripVertical,
-  Home,
   ChevronDown,
   Wand2,
   Sparkles,
@@ -41,7 +37,6 @@ import {
   Unlock
 } from 'lucide-react';
 
-// --- Firebase 初始化 (改用 Vite 環境變數安全讀取) ---
 const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG || '{}');
 const appId = import.meta.env.VITE_APP_ID || 'shift-manager-pro-v4';
 
@@ -49,9 +44,6 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// ==========================================
-// 🔐 系統管理員密碼設定
-// ==========================================
 const ADMIN_PASSWORD = '1234'; 
 
 const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
@@ -88,19 +80,15 @@ const App = () => {
   const [newEmpName, setNewEmpName] = useState('');
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
-  const [draggedIndex, setDraggedIndex] = useState(null);
   const [hasCleanedUp, setHasCleanedUp] = useState(false);
-  const [cleanupWarning, setCleanupWarning] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
 
-  // 💡 已清理乾淨的個人總時數計算
+  // 💡 確保只有這裡有一段 monthlyTotalHours
   const monthlyTotalHours = useMemo(() => {
-    if (viewMode !== 'individual' || !selectedEmployee) {
-      return 0;
-    }
+    if (viewMode !== 'individual' || !selectedEmployee) return 0;
     const yr = currentDate.getFullYear();
     const mo = currentDate.getMonth();
     const daysCount = getDaysInMonth(yr, mo);
@@ -143,11 +131,8 @@ const App = () => {
     const mo = currentDate.getMonth();
     const daysCount = getDaysInMonth(yr, mo);
     let csvContent = '\uFEFF'; 
-    
     let headers = ['員工姓名'];
-    for (let d = 1; d <= daysCount; d++) {
-      headers.push(`${mo + 1}/${d}`);
-    }
+    for (let d = 1; d <= daysCount; d++) headers.push(`${mo + 1}/${d}`);
     headers.push('當月總時數');
     csvContent += headers.join(',') + '\n';
 
@@ -158,9 +143,7 @@ const App = () => {
         const sd = shifts[`${emp.id}_${yr}-${mo + 1}-${d}`];
         const code = sd?.code || '';
         row.push(code);
-        if (code && SHIFT_TYPES[code]) {
-          totalH += SHIFT_TYPES[code].hours;
-        }
+        if (code && SHIFT_TYPES[code]) totalH += SHIFT_TYPES[code].hours;
       }
       row.push(totalH);
       csvContent += row.join(',') + '\n';
@@ -265,8 +248,7 @@ const App = () => {
   useEffect(() => {
     if (!isAdmin || !shifts || Object.keys(shifts).length === 0 || hasCleanedUp) return;
     const cleanup = async () => {
-      const today = new Date();
-      const limitDate = new Date(today);
+      const limitDate = new Date();
       limitDate.setFullYear(limitDate.getFullYear() - 2);
       limitDate.setDate(1);
       const toDelete = [];
@@ -277,11 +259,6 @@ const App = () => {
         }
       });
       for (const id of toDelete) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', id));
-      const daysInThisMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-      if (today.getDate() > daysInThisMonth - 7) {
-        const targetY = today.getFullYear() - 2, targetM = today.getMonth() + 1;
-        if (Object.values(shifts).some(s => s.date?.startsWith(`${targetY}-${targetM}-`))) setCleanupWarning(`警告：${targetY} 年 ${targetM} 月班表將於下月刪除。`);
-      }
       setHasCleanedUp(true);
     };
     cleanup();
@@ -300,13 +277,12 @@ const App = () => {
     const shiftsNeeded = (mwfCount * 9) + (ttsCount * 8);
     const maxShiftsAvailable = employees.length * (daysCount - sunCount - 4);
     let isWarning = false;
-    let dialogMessage = `即將執行一鍵自動排班：\n1. 鎖定已設定的預休 (PREOFF)\n2. 週日全體自動排休\n3. 確保符合四例四休\n4. 嚴守 11 小時休息防呆\n5. 平均分攤早/中/晚班\n\n`;
+    let dialogMessage = `即將執行一鍵自動排班：\n1. 鎖定已設定的預休\n2. 週日自動排休\n3. 符合四例四休\n4. 嚴守 11 小時休息\n5. 平均分攤早中晚班\n\n`;
     if (maxShiftsAvailable < shiftsNeeded) {
       isWarning = true;
-      const deficit = shiftsNeeded - maxShiftsAvailable;
-      dialogMessage += `⚠️ 【人力透支警告】本月需排 ${shiftsNeeded} 班，但扣除四例四休後僅有 ${maxShiftsAvailable} 班，相差了 ${deficit} 班！\n這將導致月底部分空班。確定仍要排班嗎？`;
+      dialogMessage += `⚠️ 【人力透支警告】相差了 ${shiftsNeeded - maxShiftsAvailable} 班！確定仍要排班嗎？`;
     } else {
-      dialogMessage += `✅ 人力檢測通過！可提供 ${maxShiftsAvailable} 班，需求 ${shiftsNeeded} 班。\n\n確定開始執行嗎？`;
+      dialogMessage += `✅ 人力檢測通過！確定開始執行嗎？`;
     }
     setConfirmDialog({
       title: "執行自動排班",
@@ -337,7 +313,6 @@ const App = () => {
 
         let unassignedPool = isMWF ? [...MWF_POOL] : (isTTS ? [...TTS_POOL] : []);
         let availableEmps = [];
-        let dailyGroupSeniors = { morning: 0, mid: 0, evening: 0 };
 
         employees.forEach(emp => {
           const shiftKey = `${emp.id}_${dateStr}`;
@@ -351,7 +326,7 @@ const App = () => {
             const idx = unassignedPool.indexOf(existing.code);
             if (idx > -1) unassignedPool.splice(idx, 1);
             const g = SHIFT_TYPES[existing.code]?.group;
-            if (g) { localStats[emp.id][g]++; if (SENIOR_STAFF.includes(emp.name)) dailyGroupSeniors[g]++; }
+            if (g) { localStats[emp.id][g]++; }
             localStats[emp.id].hours += (SHIFT_TYPES[existing.code]?.hours || 0);
             localShifts[`${emp.id}_${d}`] = existing.code;
           } else if (existing?.code === 'PREOFF' || existing?.code === 'OFF') {
@@ -457,10 +432,8 @@ const App = () => {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans p-4 md:p-10 selection:bg-indigo-100">
       
-      {/* 提示訊息 */}
       {message && <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[400] bg-white border px-8 py-4 rounded-full shadow-2xl flex items-center gap-3"><div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div><span className="font-bold text-sm">{message}</span></div>}
       
-      {/* 確認對話框 */}
       {confirmDialog && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className={`bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-8 text-left animate-in zoom-in-95 ${confirmDialog.isWarning ? 'border-2 border-rose-400' : 'border border-white'}`}>
@@ -474,7 +447,6 @@ const App = () => {
         </div>
       )}
       
-      {/* 解鎖編輯模式視窗 */}
       {showAuthModal && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-[2rem] shadow-2xl max-w-sm w-full p-8 text-center animate-in zoom-in-95 border border-white">
@@ -490,7 +462,6 @@ const App = () => {
         </div>
       )}
 
-      {/* 排班輸入彈出視窗 */}
       {editState && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-[2rem] shadow-2xl max-w-lg w-full p-6 text-left relative">
@@ -509,7 +480,6 @@ const App = () => {
         </div>
       )}
 
-      {/* 員工管理彈出視窗 */}
       {isEmpManageOpen && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-8 relative">
