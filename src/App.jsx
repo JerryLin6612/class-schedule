@@ -125,7 +125,11 @@ const App = () => {
   // 💡 新增：計算個人總時數，解決白屏問題
   // ==========================================
   const monthlyTotalHours = useMemo(() => {
-    if (viewMode !== 'individual' || !selectedEmployee) return 0;
+    // 確保這裡是用 {} 把邏輯包起來
+    if (viewMode !== 'individual' || !selectedEmployee) {
+      return 0;
+    }
+    
     const yr = currentDate.getFullYear();
     const mo = currentDate.getMonth();
     const daysCount = getDaysInMonth(yr, mo);
