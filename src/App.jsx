@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 
 const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG || '{}');
-const appId = import.meta.env.VITE_APP_ID || 'shift-manager-pro-v4.1';
+const appId = import.meta.env.VITE_APP_ID || 'shift-manager-pro-v5';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -87,10 +87,7 @@ const App = () => {
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
-  
-  // 💡 新增狀態：控制表格是否壓縮為「一覽檢視」
   const [isCompactView, setIsCompactView] = useState(false);
-  // 💡 新增狀態：控制清除班表的讀取動畫
   const [isClearing, setIsClearing] = useState(false);
 
   const monthlyTotalHours = useMemo(() => {
@@ -217,7 +214,6 @@ const App = () => {
     } catch (err) { showToast("清除失敗"); }
   };
 
-  // 💡 新增：清除當月所有班表的功能
   const handleClearMonth = () => {
     if (!employees || employees.length === 0) return;
     const yr = currentDate.getFullYear();
@@ -323,7 +319,7 @@ const App = () => {
     const shiftsNeeded = (mwfCount * 9) + (ttsCount * 8);
     const maxShiftsAvailable = employees.length * (daysCount - sunCount - 4);
     let isWarning = false;
-    let dialogMessage = `即將執行一鍵自動排班：\n1. 鎖定已設定的預休\n2. 週日自動排休\n3. 符合四例四休\n4. 嚴守 11 小時休息\n5. 平均分攤早中晚班\n\n`;
+    let dialogMessage = `即將執行一鍵自動排班：\n1. 鎖定已設定的預休\n2. 週日自動排休\n3. 符合四例四休\n4. 嚴守 11 小時休息防呆\n5. 平均分攤早中晚班\n6. 班表前五位員工不排 119 晚班\n\n`;
     if (maxShiftsAvailable < shiftsNeeded) {
       isWarning = true;
       dialogMessage += `⚠️ 【人力透支警告】相差了 ${shiftsNeeded - maxShiftsAvailable} 班！確定仍要排班嗎？`;
@@ -349,6 +345,9 @@ const App = () => {
 
       const MWF_POOL = ['71', '73', '73', '75', '75', '75', '119', '210', '210'];
       const TTS_POOL = ['71', '71', '75', '75', '75', '75', '105', '105'];
+      
+      // 💡 取得前五位員工的 ID 名單 (供 V5.0 規則過濾使用)
+      const no119EmpIds = employees.slice(0, 5).map(e => e.id);
 
       for (let d = 1; d <= daysCount; d++) {
         const dateStr = `${yr}-${mo + 1}-${d}`;
@@ -426,13 +425,16 @@ const App = () => {
         let eSeniorAssigned = false, mSeniorAssigned = false;
 
         eveningCodes.forEach(code => {
-            availableEmps.sort((a, b) => {
+            // 💡 V5.0 規則：若是 119 班，過濾掉名單前五位的員工
+            let eligible = code === '119' ? availableEmps.filter(e => !no119EmpIds.includes(e.id)) : availableEmps;
+            
+            eligible.sort((a, b) => {
                 if (!eSeniorAssigned) { const aSr = SENIOR_STAFF.includes(a.name), bSr = SENIOR_STAFF.includes(b.name); if (aSr && !bSr) return -1; if (!aSr && bSr) return 1; }
                 if (localStats[a.id].extraOffs !== localStats[b.id].extraOffs) return localStats[b.id].extraOffs - localStats[a.id].extraOffs;
                 if (localStats[a.id].evening !== localStats[b.id].evening) return localStats[a.id].evening - localStats[b.id].evening;
                 return localStats[a.id].hours - localStats[b.id].hours;
             });
-            const target = availableEmps[0];
+            const target = eligible[0];
             if (target) { if (SENIOR_STAFF.includes(target.name)) eSeniorAssigned = true; assign(target, code); }
         });
 
@@ -553,7 +555,7 @@ const App = () => {
           <div className="text-left">
             <h1 className="text-4xl font-black text-slate-800 tracking-tightest">雲端班表系統</h1>
             <div className="flex items-center gap-3 mt-1.5">
-               <p className="flex items-center gap-1.5 text-slate-400 text-xs font-bold uppercase tracking-[0.2em]"><Sparkles className="w-3 h-3 text-indigo-400" /> Smart Algorithm V4.0</p>
+               <p className="flex items-center gap-1.5 text-slate-400 text-xs font-bold uppercase tracking-[0.2em]"><Sparkles className="w-3 h-3 text-indigo-400" /> Smart Algorithm V5.0</p>
                {isAdmin ? <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-md text-[10px] font-black flex items-center gap-1"><Unlock className="w-3 h-3"/> 已解鎖</span> : <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded-md text-[10px] font-black flex items-center gap-1"><Lock className="w-3 h-3"/> 唯讀模式</span>}
             </div>
           </div>
@@ -603,7 +605,6 @@ const App = () => {
                 <h2 className="text-4xl font-black text-slate-800 tracking-tighter">{currentDate.getFullYear()}年 {months[currentDate.getMonth()]}</h2>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {/* 💡 檢視切換按鈕 */}
                 {viewMode === 'team' && (
                   <button onClick={() => setIsCompactView(!isCompactView)} className={`px-4 py-3.5 rounded-2xl font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2 text-[13px] ${isCompactView ? 'bg-slate-800 text-white' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'}`}>
                     {isCompactView ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
@@ -616,7 +617,6 @@ const App = () => {
                     <span className="hidden lg:inline">匯出 Excel</span>
                   </button>
                 )}
-                {/* 💡 清除當月按鈕 */}
                 {isAdmin && viewMode === 'team' && (
                   <button onClick={handleClearMonth} disabled={isClearing} className="px-4 py-3.5 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-2xl font-black shadow-sm transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50 text-[13px]">
                     {isClearing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
@@ -657,7 +657,6 @@ const App = () => {
                   </>
                 ) : (
                   <div className={`overflow-x-auto rounded-3xl border border-slate-100 bg-white/50 shadow-sm scrollbar-hide`}>
-                    {/* 💡 根據 isCompactView 動態改變表格寬度和字體 */}
                     <table className={`border-collapse ${isCompactView ? 'w-full table-fixed' : 'w-full min-w-[1000px]'}`}>
                       <thead>
                         <tr className="bg-slate-50/50">
