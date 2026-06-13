@@ -34,11 +34,13 @@ import {
   ChevronRight,
   Download,
   Lock,
-  Unlock
+  Unlock,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 
 const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG || '{}');
-const appId = import.meta.env.VITE_APP_ID || 'shift-manager-pro-v4';
+const appId = import.meta.env.VITE_APP_ID || 'shift-manager-pro-v4.1';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -85,6 +87,11 @@ const App = () => {
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
+  
+  // 💡 新增狀態：控制表格是否壓縮為「一覽檢視」
+  const [isCompactView, setIsCompactView] = useState(false);
+  // 💡 新增狀態：控制清除班表的讀取動畫
+  const [isClearing, setIsClearing] = useState(false);
 
   const monthlyTotalHours = useMemo(() => {
     if (viewMode !== 'individual' || !selectedEmployee) return 0;
@@ -208,6 +215,46 @@ const App = () => {
       showToast("排班已取消");
       setEditState(null);
     } catch (err) { showToast("清除失敗"); }
+  };
+
+  // 💡 新增：清除當月所有班表的功能
+  const handleClearMonth = () => {
+    if (!employees || employees.length === 0) return;
+    const yr = currentDate.getFullYear();
+    const mo = currentDate.getMonth() + 1;
+    
+    setConfirmDialog({
+      title: `清除 ${mo} 月班表`,
+      message: `確定要清除「所有員工」在 ${yr} 年 ${mo} 月的排班紀錄嗎？\n⚠️ 這個動作非常危險，且無法復原！`,
+      isWarning: true,
+      onConfirm: async () => {
+        setIsClearing(true);
+        try {
+          const batch = writeBatch(db);
+          let hasRecords = false;
+          
+          Object.keys(shifts).forEach(key => {
+            if (key.includes(`_${yr}-${mo}-`)) {
+              const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'shifts', key);
+              batch.delete(docRef);
+              hasRecords = true;
+            }
+          });
+
+          if (hasRecords) {
+            await batch.commit();
+            showToast(`✅ 已成功清除 ${mo} 月所有班表`);
+          } else {
+            showToast(`⚠️ ${mo} 月目前沒有任何排班紀錄`);
+          }
+        } catch (e) {
+          console.error(e);
+          showToast("❌ 清除發生錯誤");
+        } finally {
+          setIsClearing(false);
+        }
+      }
+    });
   };
 
   useEffect(() => {
@@ -390,7 +437,6 @@ const App = () => {
         });
 
         morningCodes.forEach(code => {
-            // 💡 嚴格篩選：昨天是 119, 210 的人不能接早班，且移除強迫排班的 fallback
             let eligible = availableEmps.filter(e => canTakeEarly(e.id, d));
             eligible.sort((a, b) => {
                 if (!mSeniorAssigned) { const aSr = SENIOR_STAFF.includes(a.name), bSr = SENIOR_STAFF.includes(b.name); if (aSr && !bSr) return -1; if (!aSr && bSr) return 1; }
@@ -403,7 +449,6 @@ const App = () => {
         });
 
         midCodes.forEach(code => {
-            // 💡 嚴格篩選：如果是 75，也要套用早班防呆（不可接夜班）；105 則不受限
             let eligible = code === '75' ? availableEmps.filter(e => canTakeEarly(e.id, d)) : availableEmps;
             eligible.sort((a, b) => {
                 if (localStats[a.id].extraOffs !== localStats[b.id].extraOffs) return localStats[b.id].extraOffs - localStats[a.id].extraOffs;
@@ -549,7 +594,7 @@ const App = () => {
         </aside>
         <section className="lg:col-span-3">
           <div className="bg-white rounded-[3rem] shadow-sm border overflow-hidden relative min-h-[600px]">
-            <div className="p-10 flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white/50 backdrop-blur-sm border-b border-slate-50">
+            <div className="p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white/50 backdrop-blur-sm border-b border-slate-50">
               <div className="flex items-center gap-6">
                 <div className="flex gap-2">
                   <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-3.5 hover:bg-slate-50 rounded-2xl border shadow-sm transition-all active:scale-90"><ChevronLeft className="w-5 h-5" /></button>
@@ -557,12 +602,36 @@ const App = () => {
                 </div>
                 <h2 className="text-4xl font-black text-slate-800 tracking-tighter">{currentDate.getFullYear()}年 {months[currentDate.getMonth()]}</h2>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                {viewMode === 'team' && <button onClick={handleExportExcel} className="px-5 py-4 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 rounded-2xl font-black shadow-sm transition-all active:scale-95 flex items-center gap-2"><Download className="w-5 h-5" /><span className="hidden sm:inline">匯出 Excel</span></button>}
-                {isAdmin && viewMode === 'team' && <button onClick={triggerAutoSchedule} disabled={isGenerating} className="px-6 py-4 bg-gradient-to-br from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50">{isGenerating ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}{isGenerating ? '正在排班...' : '自動排班'}</button>}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* 💡 檢視切換按鈕 */}
+                {viewMode === 'team' && (
+                  <button onClick={() => setIsCompactView(!isCompactView)} className={`px-4 py-3.5 rounded-2xl font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2 text-[13px] ${isCompactView ? 'bg-slate-800 text-white' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'}`}>
+                    {isCompactView ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
+                    <span className="hidden lg:inline">{isCompactView ? '展開檢視' : '一覽檢視'}</span>
+                  </button>
+                )}
+                {viewMode === 'team' && (
+                  <button onClick={handleExportExcel} className="px-4 py-3.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 rounded-2xl font-black shadow-sm transition-all active:scale-95 flex items-center gap-2 text-[13px]">
+                    <Download className="w-4 h-4" />
+                    <span className="hidden lg:inline">匯出 Excel</span>
+                  </button>
+                )}
+                {/* 💡 清除當月按鈕 */}
+                {isAdmin && viewMode === 'team' && (
+                  <button onClick={handleClearMonth} disabled={isClearing} className="px-4 py-3.5 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-2xl font-black shadow-sm transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50 text-[13px]">
+                    {isClearing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                    <span className="hidden lg:inline">清除當月</span>
+                  </button>
+                )}
+                {isAdmin && viewMode === 'team' && (
+                  <button onClick={triggerAutoSchedule} disabled={isGenerating} className="px-4 py-3.5 bg-gradient-to-br from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50 text-[13px]">
+                    {isGenerating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                    {isGenerating ? '正在排班...' : '自動排班'}
+                  </button>
+                )}
               </div>
             </div>
-            <div className="p-10">
+            <div className={`p-8 ${viewMode === 'team' && isCompactView ? 'pt-4 px-4' : ''}`}>
               {loading ? <div className="h-[500px] flex items-center justify-center flex-col gap-4"><RefreshCw className="w-12 h-12 text-indigo-100 animate-spin" /><span className="text-[10px] font-black text-slate-300 uppercase tracking-widest text-left">資料同步中...</span></div> : (
                 viewMode === 'individual' ? (
                   <>
@@ -587,24 +656,33 @@ const App = () => {
                     </div>
                   </>
                 ) : (
-                  <div className="overflow-x-auto rounded-3xl border border-slate-100 bg-white/50 shadow-sm scrollbar-hide">
-                    <table className="w-full min-w-[1000px] border-collapse">
+                  <div className={`overflow-x-auto rounded-3xl border border-slate-100 bg-white/50 shadow-sm scrollbar-hide`}>
+                    {/* 💡 根據 isCompactView 動態改變表格寬度和字體 */}
+                    <table className={`border-collapse ${isCompactView ? 'w-full table-fixed' : 'w-full min-w-[1000px]'}`}>
                       <thead>
                         <tr className="bg-slate-50/50">
-                          <th className="sticky left-0 z-20 bg-slate-50 p-4 text-left text-[11px] font-bold text-slate-400 uppercase tracking-widest min-w-[120px]">員工姓名</th>
+                          <th className={`sticky left-0 z-20 bg-slate-50 text-left font-bold text-slate-400 uppercase tracking-widest ${isCompactView ? 'p-2 text-[10px] min-w-[70px]' : 'p-4 text-[11px] min-w-[120px]'}`}>員工姓名</th>
                           {Array.from({ length: getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth()) }, (_, i) => i + 1).map(d => {
                             const dow = new Date(currentDate.getFullYear(), currentDate.getMonth(), d).getDay(); const isSun = dow === 0; const isSpecial = (dow === 2 || dow === 4 || dow === 6);
-                            return <th key={d} title={isSpecial ? "本日無夜班" : ""} className={`p-2 py-3 text-center border-l border-slate-100/50 min-w-[46px] ${isSun ? 'text-rose-500 bg-rose-50/50' : isSpecial ? 'text-indigo-500 bg-indigo-50/20' : 'text-slate-500'}`}><div className="text-[13px] font-black">{d}</div><div className="text-[10px] font-bold opacity-70 mt-0.5">週{WEEKDAYS_ZH[dow]}</div></th>
+                            return <th key={d} title={isSpecial ? "本日無夜班" : ""} className={`text-center border-l border-slate-100/50 ${isCompactView ? 'p-0.5 py-1 min-w-[28px]' : 'p-2 py-3 min-w-[46px]'} ${isSun ? 'text-rose-500 bg-rose-50/50' : isSpecial ? 'text-indigo-500 bg-indigo-50/20' : 'text-slate-500'}`}>
+                              <div className={`${isCompactView ? 'text-[11px]' : 'text-[13px]'} font-black`}>{d}</div>
+                              {!isCompactView && <div className="text-[10px] font-bold opacity-70 mt-0.5">週{WEEKDAYS_ZH[dow]}</div>}
+                            </th>
                           })}
                         </tr>
                       </thead>
                       <tbody>
                         {employees.map(emp => (
                           <tr key={emp.id} className="group border-t border-slate-50 hover:bg-slate-50/30 transition-colors">
-                            <td className="sticky left-0 z-10 bg-white p-4 font-semibold text-slate-700 flex items-center gap-2 shadow-[4px_0_10px_-2px_rgba(0,0,0,0.02)] group-hover:text-indigo-600">{String(emp.name)}{SENIOR_STAFF.includes(emp.name) && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-sm"></span>}</td>
+                            <td className={`sticky left-0 z-10 bg-white font-semibold text-slate-700 flex items-center gap-1.5 shadow-[4px_0_10px_-2px_rgba(0,0,0,0.02)] group-hover:text-indigo-600 ${isCompactView ? 'p-2 text-[11px]' : 'p-4'}`}>{String(emp.name)}{SENIOR_STAFF.includes(emp.name) && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-sm"></span>}</td>
                             {Array.from({ length: getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth()) }, (_, i) => i + 1).map(d => {
                               const sd = shifts[`${emp.id}_${currentDate.getFullYear()}-${currentDate.getMonth()+1}-${d}`]; const has = sd?.code && SHIFT_TYPES[sd.code];
-                              return <td key={d} onClick={() => isAdmin && setEditState({ day: d, empId: emp.id })} className={`p-1 text-center border-l border-slate-50/50 h-14 ${isAdmin ? 'cursor-pointer hover:bg-slate-100' : ''} ${has ? SHIFT_TYPES[sd.code].color : ''}`}>{has ? <div className="flex flex-col items-center leading-none"><span className="text-[13px] font-black tracking-tighter mb-0.5">{String(sd.code)}</span><span className="text-[9px] font-medium opacity-60">{SHIFT_TYPES[sd.code].hours}h</span></div> : <span className="text-slate-100 group-hover:text-slate-300 text-xs">{isAdmin ? '＋' : ''}</span>}</td>
+                              return <td key={d} onClick={() => isAdmin && setEditState({ day: d, empId: emp.id })} className={`text-center border-l border-slate-50/50 ${isCompactView ? 'p-0 h-10' : 'p-1 h-14'} ${isAdmin ? 'cursor-pointer hover:bg-slate-100' : ''} ${has ? SHIFT_TYPES[sd.code].color : ''}`}>
+                                {has ? <div className="flex flex-col items-center leading-none">
+                                  <span className={`${isCompactView ? 'text-[10px]' : 'text-[13px]'} font-black tracking-tighter ${!isCompactView && 'mb-0.5'}`}>{String(sd.code)}</span>
+                                  {!isCompactView && <span className="text-[9px] font-medium opacity-60">{SHIFT_TYPES[sd.code].hours}h</span>}
+                                </div> : <span className="text-slate-100 group-hover:text-slate-300 text-xs">{isAdmin && !isCompactView ? '＋' : ''}</span>}
+                              </td>
                             })}
                           </tr>
                         ))}
