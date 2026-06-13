@@ -390,8 +390,8 @@ const App = () => {
         });
 
         morningCodes.forEach(code => {
+            // 💡 嚴格篩選：昨天是 119, 210 的人不能接早班，且移除強迫排班的 fallback
             let eligible = availableEmps.filter(e => canTakeEarly(e.id, d));
-            if (eligible.length === 0) eligible = availableEmps; 
             eligible.sort((a, b) => {
                 if (!mSeniorAssigned) { const aSr = SENIOR_STAFF.includes(a.name), bSr = SENIOR_STAFF.includes(b.name); if (aSr && !bSr) return -1; if (!aSr && bSr) return 1; }
                 if (localStats[a.id].extraOffs !== localStats[b.id].extraOffs) return localStats[b.id].extraOffs - localStats[a.id].extraOffs;
@@ -403,12 +403,14 @@ const App = () => {
         });
 
         midCodes.forEach(code => {
-            availableEmps.sort((a, b) => {
+            // 💡 嚴格篩選：如果是 75，也要套用早班防呆（不可接夜班）；105 則不受限
+            let eligible = code === '75' ? availableEmps.filter(e => canTakeEarly(e.id, d)) : availableEmps;
+            eligible.sort((a, b) => {
                 if (localStats[a.id].extraOffs !== localStats[b.id].extraOffs) return localStats[b.id].extraOffs - localStats[a.id].extraOffs;
                 if (localStats[a.id].mid !== localStats[b.id].mid) return localStats[a.id].mid - localStats[b.id].mid;
                 return localStats[a.id].hours - localStats[b.id].hours;
             });
-            const target = availableEmps[0]; if (target) assign(target, code);
+            const target = eligible[0]; if (target) assign(target, code);
         });
         [...availableEmps].forEach(emp => { assign(emp, 'OFF'); });
       }
